@@ -1,0 +1,16 @@
+name: Karpathy PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ashwinsekar18/andrej-karpathy-skills@main
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}

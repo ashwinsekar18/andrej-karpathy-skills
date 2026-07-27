@@ -98,7 +98,12 @@ Strong success criteria let the LLM loop independently. Weak criteria ("make it 
 
 ## Install
 
-**Option A: Claude Code Plugin (recommended)**
+**Option A: GitHub Action (automated PR review)**
+
+- General engineering: see [GitHub Action — General (Karpathy PR Review Checklist)](#github-action--general-karpathy-pr-review-checklist) below
+- Water sector: see [GitHub Action — Water Sector Environmental Engineering](#github-action--water-sector-environmental-engineering) below
+
+**Option B: Claude Code Plugin**
 
 From within Claude Code, first add the marketplace:
 ```
@@ -112,7 +117,7 @@ Then install the plugin:
 
 This installs the guidelines as a Claude Code plugin, making the skill available across all your projects.
 
-**Option B: CLAUDE.md (per-project)**
+**Option C: CLAUDE.md (per-project)**
 
 New project:
 ```bash
@@ -123,6 +128,108 @@ Existing project (append):
 ```bash
 echo "" >> CLAUDE.md
 curl https://raw.githubusercontent.com/forrestchang/andrej-karpathy-skills/main/CLAUDE.md >> CLAUDE.md
+```
+
+## GitHub Action — Water Sector Environmental Engineering
+
+A domain-specific PR review checklist for water/wastewater engineering repositories — analysis scripts, treatment models, SCADA integrations, compliance reporting tools, and hydraulic models.
+
+**Add to any water-sector repository:**
+
+```yaml
+# .github/workflows/water-env-review.yml
+name: Water Sector Engineering Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ashwinsekar18/andrej-karpathy-skills/water-env-review@main
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+```
+
+On every PR open or push, the action will:
+
+- Post a checklist covering five engineering-specific areas (see below)
+- Update the same comment on subsequent pushes — no spam
+- Add a **🚨 Safety-critical file warning** when files matching dosing, alarm, setpoint, SCADA, chemical, treatment, or permit patterns are changed
+- Add a **⚠️ Large diff warning** when the diff exceeds size thresholds
+
+**The five checklist areas:**
+
+| Area | What it catches |
+|------|----------------|
+| **Units & Physical Plausibility** | Off-by-1000× unit errors, silent treatment of non-detects as zero, impossible sensor values |
+| **Regulatory Compliance** | Hardcoded MCLs/permit limits without citation, mismatched reporting periods |
+| **Data Integrity** | Undocumented data sources, QA/QC flags ignored, time-zone errors in time-series |
+| **Safety-Critical Calculations** | Dosing and alarm logic changes without independent verification or field sign-off |
+| **Scientific Reproducibility** | Non-reproducible analysis, undocumented model versions, inappropriate statistics for water data |
+
+**Optional inputs:**
+
+| Input | Default | Description |
+|-------|---------|-------------|
+| `max-diff-lines` | `400` | Line-change threshold for the large-diff warning |
+| `max-files-changed` | `15` | File count threshold for the large-diff warning |
+
+For background on each area, see [`skills/water-env-review/SKILL.md`](skills/water-env-review/SKILL.md).
+
+## GitHub Action — General (Karpathy PR Review Checklist)
+
+Automatically posts a Karpathy review checklist on every pull request and warns when diffs exceed safe size thresholds.
+
+**Add to any repository in two steps:**
+
+1. Create `.github/workflows/karpathy-review.yml`:
+
+```yaml
+name: Karpathy PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ashwinsekar18/andrej-karpathy-skills@main
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+```
+
+That's it. On every PR open or push, the action will:
+
+- Post a checklist comment covering all four principles
+- Update the comment on subsequent pushes (no spam)
+- Add a **⚠️ Large diff warning** if the PR exceeds the configured thresholds
+
+**Optional inputs:**
+
+| Input | Default | Description |
+|-------|---------|-------------|
+| `max-diff-lines` | `400` | Line-change threshold for the surgical-changes warning |
+| `max-files-changed` | `15` | File count threshold for the surgical-changes warning |
+
+Example with custom thresholds:
+
+```yaml
+      - uses: ashwinsekar18/andrej-karpathy-skills@main
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          max-diff-lines: '200'
+          max-files-changed: '10'
 ```
 
 ## Using with Cursor
