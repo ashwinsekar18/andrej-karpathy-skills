@@ -1,0 +1,144 @@
+name: 'Water Sector Environmental Engineering PR Review'
+description: 'Posts a domain-specific review checklist for water/wastewater engineering code — units, regulatory compliance, data integrity, safety-critical calculations, and scientific reproducibility.'
+author: 'andrej-karpathy-skills'
+
+inputs:
+  github-token:
+    description: 'GitHub token (use secrets.GITHUB_TOKEN)'
+    required: true
+  max-diff-lines:
+    description: 'Line-change threshold before a large-diff warning is added'
+    default: '400'
+  max-files-changed:
+    description: 'File count threshold before a large-diff warning is added'
+    default: '15'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Post water-sector engineering review checklist
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          const maxLines = parseInt('${{ inputs.max-diff-lines }}');
+          const maxFiles = parseInt('${{ inputs.max-files-changed }}');
+          const { owner, repo } = context.repo;
+          const pr = context.payload.pull_request;
+          if (!pr) { console.log('Not a pull_request event, skipping.'); return; }
+
+          // Fetch PR stats and changed file list in parallel
+          const [{ data: prData }, { data: files }] = await Promise.all([
+            github.rest.pulls.get({ owner, repo, pull_number: pr.number }),
+            github.rest.pulls.listFiles({ owner, repo, pull_number: pr.number, per_page: 100 })
+          ]);
+
+          const linesChanged = prData.additions + prData.deletions;
+          const filesChanged = prData.changed_files;
+
+          // Detect safety-critical file patterns
+          const SAFETY_PATTERNS = [
+            /dos(ing|age)/i,
+            /chlor(ine|ination|amin)/i,
+            /chemical/i,
+            /coagul/i,
+            /disinfect/i,
+            /alarm/i,
+            /setpoint/i,
+            /control_logic/i,
+            /scada/i,
+            /permit/i,
+            /treatment/i,
+            /effluent/i,
+          ];
+          const safetyFiles = files
+            .map(f => f.filename)
+            .filter(name => SAFETY_PATTERNS.some(re => re.test(name)));
+
+          // Safety-critical file warning block
+          let safetyWarning = '';
+          if (safetyFiles.length > 0) {
+            const fileList = safetyFiles.map(f => `\`${f}\``).join(', ');
+            safetyWarning = `
+> [!CAUTION]
+> **Safety-critical files modified** — ${fileList}
+> Changes to dosing, treatment, alarm, setpoint, or SCADA logic require independent calculation verification and field validation before deployment.
+
+`;
+          }
+
+          // Large-diff warning block
+          let diffWarning = '';
+          if (linesChanged > maxLines || filesChanged > maxFiles) {
+            const linesPart = linesChanged > maxLines
+              ? `**${linesChanged} lines changed** (threshold: ${maxLines})`
+              : null;
+            const filesPart = filesChanged > maxFiles
+              ? `**${filesChanged} files changed** (threshold: ${maxFiles})`
+              : null;
+            const exceeded = [linesPart, filesPart].filter(Boolean).join(' · ');
+            diffWarning = `
+> [!WARNING]
+> **Large diff detected** — ${exceeded}
+> Large changes to environmental engineering code increase the risk of unit errors or regulatory threshold mismatches. Prefer small, focused changes.
+
+`;
+          }
+
+          const body = `## Water Sector Environmental Engineering Review Checklist
+${safetyWarning}${diffWarning}
+Use this checklist during review. Check off each item or leave a comment where attention is needed.
+
+### 1. Units & Physical Plausibility
+- [ ] Every parameter has its unit documented (mg/L, μg/L, NTU, pH, cfu/100 mL, MGD, m³/d, °C, etc.)
+- [ ] Unit conversions are explicit named constants — no unexplained magic multipliers
+- [ ] Values are within physically possible ranges (pH 0–14, turbidity ≥ 0, concentrations ≥ 0)
+- [ ] Non-detect / below-MDL values are flagged explicitly and **not** silently treated as zero
+
+### 2. Regulatory Compliance
+- [ ] MCLs, effluent permit limits, and water quality criteria are cited with regulation, version, and effective date
+- [ ] Regulatory thresholds are named constants (e.g. \`MCL_NITRATE_MG_L = 10\`), not inline magic numbers
+- [ ] Analysis period and reporting cycle match the applicable permit
+- [ ] Any changes to alarm thresholds or permit-limit comparisons are explicitly justified in the PR description
+
+### 3. Data Integrity
+- [ ] Data sources are documented (monitoring station IDs, lab report IDs, SCADA tag names)
+- [ ] Outliers and sensor anomalies are handled with an explicit, documented strategy (flag, exclude, or impute)
+- [ ] Time zones and DST handling are documented for all time-series data
+- [ ] Lab/sensor QA-QC flags are respected — flagged data is not silently included in analysis
+
+### 4. Safety-Critical Calculations
+- [ ] Chemical dosing calculations (chlorine, coagulant, acid/base) have been independently verified
+- [ ] Changes to control setpoints or SCADA logic are tagged for field validation before production deployment
+- [ ] Mass balance checks are present where applicable (influent = effluent + removed + stored)
+- [ ] Missing or bad sensor readings fall back to safe defaults, not zero or NULL
+
+### 5. Scientific Reproducibility
+- [ ] Analysis produces identical results with identical inputs (no hidden state; random seeds fixed if used)
+- [ ] Model version, calibration date, and input dataset version are documented
+- [ ] Detection limit (MDL/MRL) and the censored-data handling method are stated
+- [ ] Statistical methods are appropriate for water quality distributions (log-normal, non-parametric where needed)
+
+---
+<sub>Posted by [andrej-karpathy-skills](https://github.com/ashwinsekar18/andrej-karpathy-skills) · Diff: +${prData.additions} / -${prData.deletions} across ${filesChanged} file(s)</sub>`;
+
+          // Find an existing checklist comment to update (avoids spam on each push)
+          const MARKER = '## Water Sector Environmental Engineering Review Checklist';
+          const { data: comments } = await github.rest.issues.listComments({
+            owner, repo, issue_number: pr.number, per_page: 100
+          });
+          const existing = comments.find(
+            c => c.user.type === 'Bot' && c.body.startsWith(MARKER)
+          );
+
+          if (existing) {
+            await github.rest.issues.updateComment({
+              owner, repo, comment_id: existing.id, body
+            });
+            console.log(`Updated existing checklist comment #${existing.id}`);
+          } else {
+            await github.rest.issues.createComment({
+              owner, repo, issue_number: pr.number, body
+            });
+            console.log('Created new checklist comment');
+          }
