@@ -98,7 +98,11 @@ Strong success criteria let the LLM loop independently. Weak criteria ("make it 
 
 ## Install
 
-**Option A: Claude Code Plugin (recommended)**
+**Option A: GitHub Action (automated PR review)**
+
+See [GitHub Action (PR Review Checklist)](#github-action-pr-review-checklist) below — one workflow file and the checklist appears on every PR automatically.
+
+**Option B: Claude Code Plugin**
 
 From within Claude Code, first add the marketplace:
 ```
@@ -112,7 +116,7 @@ Then install the plugin:
 
 This installs the guidelines as a Claude Code plugin, making the skill available across all your projects.
 
-**Option B: CLAUDE.md (per-project)**
+**Option C: CLAUDE.md (per-project)**
 
 New project:
 ```bash
@@ -123,6 +127,56 @@ Existing project (append):
 ```bash
 echo "" >> CLAUDE.md
 curl https://raw.githubusercontent.com/forrestchang/andrej-karpathy-skills/main/CLAUDE.md >> CLAUDE.md
+```
+
+## GitHub Action (PR Review Checklist)
+
+Automatically posts a Karpathy review checklist on every pull request and warns when diffs exceed safe size thresholds.
+
+**Add to any repository in two steps:**
+
+1. Create `.github/workflows/karpathy-review.yml`:
+
+```yaml
+name: Karpathy PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ashwinsekar18/andrej-karpathy-skills@main
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+```
+
+That's it. On every PR open or push, the action will:
+
+- Post a checklist comment covering all four principles
+- Update the comment on subsequent pushes (no spam)
+- Add a **⚠️ Large diff warning** if the PR exceeds the configured thresholds
+
+**Optional inputs:**
+
+| Input | Default | Description |
+|-------|---------|-------------|
+| `max-diff-lines` | `400` | Line-change threshold for the surgical-changes warning |
+| `max-files-changed` | `15` | File count threshold for the surgical-changes warning |
+
+Example with custom thresholds:
+
+```yaml
+      - uses: ashwinsekar18/andrej-karpathy-skills@main
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          max-diff-lines: '200'
+          max-files-changed: '10'
 ```
 
 ## Using with Cursor
