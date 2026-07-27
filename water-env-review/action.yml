@@ -2,6 +2,10 @@ name: 'Water Sector Environmental Engineering PR Review'
 description: 'Posts a domain-specific review checklist for water/wastewater engineering code — units, regulatory compliance, data integrity, safety-critical calculations, and scientific reproducibility.'
 author: 'andrej-karpathy-skills'
 
+branding:
+  icon: 'shield'
+  color: 'blue'
+
 inputs:
   github-token:
     description: 'GitHub token (use secrets.GITHUB_TOKEN)'
@@ -21,16 +25,18 @@ runs:
       with:
         github-token: ${{ inputs.github-token }}
         script: |
-          const maxLines = parseInt('${{ inputs.max-diff-lines }}');
-          const maxFiles = parseInt('${{ inputs.max-files-changed }}');
+          const rawMaxLines = parseInt('${{ inputs.max-diff-lines }}', 10);
+          const rawMaxFiles = parseInt('${{ inputs.max-files-changed }}', 10);
+          const maxLines = isNaN(rawMaxLines) ? 400 : rawMaxLines;
+          const maxFiles = isNaN(rawMaxFiles) ? 15 : rawMaxFiles;
           const { owner, repo } = context.repo;
           const pr = context.payload.pull_request;
           if (!pr) { console.log('Not a pull_request event, skipping.'); return; }
 
-          // Fetch PR stats and changed file list in parallel
-          const [{ data: prData }, { data: files }] = await Promise.all([
+          // Fetch PR stats and ALL changed files (paginated — handles >100 files)
+          const [{ data: prData }, files] = await Promise.all([
             github.rest.pulls.get({ owner, repo, pull_number: pr.number }),
-            github.rest.pulls.listFiles({ owner, repo, pull_number: pr.number, per_page: 100 })
+            github.paginate(github.rest.pulls.listFiles, { owner, repo, pull_number: pr.number, per_page: 100 })
           ]);
 
           const linesChanged = prData.additions + prData.deletions;
@@ -122,9 +128,9 @@ Use this checklist during review. Check off each item or leave a comment where a
 ---
 <sub>Posted by [andrej-karpathy-skills](https://github.com/ashwinsekar18/andrej-karpathy-skills) · Diff: +${prData.additions} / -${prData.deletions} across ${filesChanged} file(s)</sub>`;
 
-          // Find an existing checklist comment to update (avoids spam on each push)
+          // Find an existing checklist comment to update — paginated to handle busy PRs
           const MARKER = '## Water Sector Environmental Engineering Review Checklist';
-          const { data: comments } = await github.rest.issues.listComments({
+          const comments = await github.paginate(github.rest.issues.listComments, {
             owner, repo, issue_number: pr.number, per_page: 100
           });
           const existing = comments.find(
